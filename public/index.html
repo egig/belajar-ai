@@ -28,6 +28,19 @@
 				return el;
 			}
 
+			async function loadHistory() {
+				try {
+					const res = await fetch("/api/chat");
+					const data = await res.json();
+					for (const msg of data.history ?? []) {
+						addMessage(msg.content, msg.role);
+					}
+				} catch (err) {
+					console.error(err);
+				}
+			}
+			loadHistory();
+
 			form.addEventListener("submit", async (e) => {
 				e.preventDefault();
 				const message = input.value.trim();

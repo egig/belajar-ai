@@ -9,6 +9,12 @@ app.use(express.static("./public"))
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, baseURL: process.env.OPENAI_BASE_URL });
 
+let chatHistory = [];
+
+app.get("/api/chat", (req, res) => {
+	res.json({ history: chatHistory });
+});
+
 app.post("/api/chat", async (req, res) => {
 	const { message } = req.body ?? {};
 
@@ -16,14 +22,20 @@ app.post("/api/chat", async (req, res) => {
 		return res.status(400).json({ error: "message wajib diisi" });
 	}
 
+	chatHistory.push({ role: "user", content: message });
+
 	try {
 		const completion = await openai.chat.completions.create({
 			model: process.env.MODEL,
-			messages: [{ role: "user", content: message }],
+			messages: chatHistory,
 		});
 
-		res.json({ reply: completion.choices[0].message.content });
+		const reply = completion.choices[0].message.content;
+		chatHistory.push({ role: "assistant", content: reply });
+
+		res.json({ reply });
 	} catch (err) {
+		chatHistory.pop();
 		console.error(err);
 		res.status(500).json({ error: "gagal menghubungi OpenAI" });
 	}
