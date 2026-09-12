@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>AI Chat sederhana</title>
+		<link rel="stylesheet" href="style.css" />
+	</head>
+	<body>
+		<main>
+			<header>AI Chat Sederhana</header>
+			<div id="messages"></div>
+			<form id="chat-form">
+				<textarea id="input" placeholder="Tulis pesan..." required></textarea>
+				<button type="submit">Kirim</button>
+			</form>
+		</main>
+
+		<script>
+			const form = document.getElementById("chat-form");
+			const input = document.getElementById("input");
+			const messages = document.getElementById("messages");
+
+			function addMessage(text, role) {
+				const el = document.createElement("div");
+				el.className = "message " + role;
+				el.textContent = text;
+				messages.appendChild(el);
+				messages.scrollTop = messages.scrollHeight;
+				return el;
+			}
+
+			form.addEventListener("submit", async (e) => {
+				e.preventDefault();
+				const message = input.value.trim();
+				if (!message) return;
+
+				addMessage(message, "user");
+				input.value = "";
+
+				const button = form.querySelector("button");
+				button.disabled = true;
+				const pending = addMessage("...", "assistant");
+
+				try {
+					const res = await fetch("/api/chat", {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({ message }),
+					});
+					const data = await res.json();
+					pending.textContent = res.ok ? data.reply : (data.error || "Terjadi kesalahan");
+				} catch (err) {
+					pending.textContent = "Gagal terhubung ke server";
+				} finally {
+					button.disabled = false;
+					input.focus();
+				}
+			});
+		</script>
+	</body>
+</html>
