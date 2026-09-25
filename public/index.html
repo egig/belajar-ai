@@ -12,12 +12,21 @@
 				<textarea id="input" placeholder="Tulis pesan..." required></textarea>
 				<button type="submit">Kirim</button>
 			</form>
+			<div id="stats-bar">
+				<div id="cost-bar"></div>
+				<div id="usage-bar"></div>
+			</div>
 		</main>
 
 		<script>
 			const form = document.getElementById("chat-form");
 			const input = document.getElementById("input");
 			const messages = document.getElementById("messages");
+			const usageBar = document.getElementById("usage-bar");
+			const costBar = document.getElementById("cost-bar");
+
+			let contextLength = null;
+			let modelName = null;
 
 			function addMessage(text, role) {
 				const el = document.createElement("div");
@@ -28,6 +37,31 @@
 				return el;
 			}
 
+			function renderUsage(totalUsage) {
+				if (!totalUsage) return;
+				const used = totalUsage.total_tokens.toLocaleString();
+				const tokenText = contextLength
+					? `${used} / ${contextLength.toLocaleString()} token (${((totalUsage.total_tokens / contextLength) * 100).toFixed(1)}%)`
+					: `${used} token`;
+				usageBar.textContent = modelName ? `${modelName} · ${tokenText}` : tokenText;
+			}
+
+			function renderCost(cumulativeUsage) {
+				if (!cumulativeUsage) return;
+				costBar.textContent = `${cumulativeUsage.total_tokens.toLocaleString()} token terpakai`;
+			}
+
+			async function loadModelInfo() {
+				try {
+					const res = await fetch("/api/model-info");
+					const data = await res.json();
+					contextLength = data.limits?.contextLength ?? null;
+					modelName = data.model ?? null;
+				} catch (err) {
+					console.error(err);
+				}
+			}
+
 			async function loadHistory() {
 				try {
 					const res = await fetch("/api/chat");
@@ -35,11 +69,13 @@
 					for (const msg of data.history ?? []) {
 						addMessage(msg.content, msg.role);
 					}
+					renderUsage(data.totalUsage);
+					renderCost(data.cumulativeUsage);
 				} catch (err) {
 					console.error(err);
 				}
 			}
-			loadHistory();
+			loadModelInfo().then(loadHistory);
 
 			form.addEventListener("submit", async (e) => {
 				e.preventDefault();
@@ -61,6 +97,10 @@
 					});
 					const data = await res.json();
 					pending.textContent = res.ok ? data.reply : (data.error || "Terjadi kesalahan");
+					if (res.ok) {
+						renderUsage(data.totalUsage);
+						renderCost(data.cumulativeUsage);
+					}
 				} catch (err) {
 					pending.textContent = "Gagal terhubung ke server";
 				} finally {
