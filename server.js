@@ -50,29 +50,41 @@ app.post("/api/chat", async (req, res) => {
 	}
 
 	chatHistory.push({ role: "user", content: message });
+	res.setHeader("Content-Type", "text/plain; charset=utf-8");
 
+	let reply = "";
 	try {
-		const completion = await openai.chat.completions.create({
+		const stream = await openai.chat.completions.create({
 			model: process.env.MODEL,
 			messages: chatHistory,
+			stream: true,
+			stream_options: { include_usage: true },
 		});
 
-		const reply = completion.choices[0].message.content;
-		chatHistory.push({ role: "assistant", content: reply });
-
-		const usage = completion.usage ?? null;
-		if (usage) {
-			lastUsage = usage;
-			cumulativeUsage.prompt_tokens += usage.prompt_tokens ?? 0;
-			cumulativeUsage.completion_tokens += usage.completion_tokens ?? 0;
-			cumulativeUsage.total_tokens += usage.total_tokens ?? 0;
+		for await (const chunk of stream) {
+			const delta = chunk.choices?.[0]?.delta?.content ?? "";
+			if (delta) {
+				reply += delta;
+				res.write(delta);
+			}
+			if (chunk.usage) {
+				lastUsage = chunk.usage;
+				cumulativeUsage.prompt_tokens += chunk.usage.prompt_tokens ?? 0;
+				cumulativeUsage.completion_tokens += chunk.usage.completion_tokens ?? 0;
+				cumulativeUsage.total_tokens += chunk.usage.total_tokens ?? 0;
+			}
 		}
 
-		res.json({ reply, usage, totalUsage: lastUsage, cumulativeUsage });
+		chatHistory.push({ role: "assistant", content: reply });
+		res.end();
 	} catch (err) {
 		chatHistory.pop();
 		console.error(err);
-		res.status(500).json({ error: "gagal menghubungi OpenAI" });
+		if (!res.headersSent) {
+			res.status(500).json({ error: "gagal menghubungi OpenAI" });
+		} else {
+			res.end();
+		}
 	}
 });
 

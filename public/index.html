@@ -87,7 +87,7 @@
 
 				const button = form.querySelector("button");
 				button.disabled = true;
-				const pending = addMessage("...", "assistant");
+				const pending = addMessage("", "assistant");
 
 				try {
 					const res = await fetch("/api/chat", {
@@ -95,11 +95,24 @@
 						headers: { "Content-Type": "application/json" },
 						body: JSON.stringify({ message }),
 					});
-					const data = await res.json();
-					pending.textContent = res.ok ? data.reply : (data.error || "Terjadi kesalahan");
-					if (res.ok) {
-						renderUsage(data.totalUsage);
-						renderCost(data.cumulativeUsage);
+
+					if (!res.ok) {
+						const data = await res.json();
+						pending.textContent = data.error || "Terjadi kesalahan";
+					} else {
+						const reader = res.body.getReader();
+						const decoder = new TextDecoder();
+						while (true) {
+							const { done, value } = await reader.read();
+							if (done) break;
+							pending.textContent += decoder.decode(value, { stream: true });
+							messages.scrollTop = messages.scrollHeight;
+						}
+
+						const statsRes = await fetch("/api/chat");
+						const statsData = await statsRes.json();
+						renderUsage(statsData.totalUsage);
+						renderCost(statsData.cumulativeUsage);
 					}
 				} catch (err) {
 					pending.textContent = "Gagal terhubung ke server";
