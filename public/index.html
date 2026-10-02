@@ -6,7 +6,10 @@
 	</head>
 	<body>
 		<main>
-			<header>AI Chat Sederhana</header>
+			<header>
+				<span>AI Chat Sederhana</span>
+				<button type="button" id="settings-btn" class="icon-btn" title="Pengaturan" aria-label="Pengaturan">Pengaturan</button>
+			</header>
 			<div id="messages"></div>
 			<form id="chat-form">
 				<textarea id="input" placeholder="Tulis pesan..." required></textarea>
@@ -18,12 +21,68 @@
 			</div>
 		</main>
 
+		<div id="settings-modal" class="modal" hidden>
+			<div class="modal-box">
+				<h2>Pengaturan</h2>
+				<label for="system-input">System instruction</label>
+				<textarea id="system-input" placeholder="Contoh: Kamu adalah asisten yang menjawab singkat dalam bahasa Indonesia."></textarea>
+				<div class="modal-actions">
+					<button type="button" id="settings-cancel" class="secondary">Batal</button>
+					<button type="button" id="settings-save">Simpan</button>
+				</div>
+			</div>
+		</div>
+
 		<script>
 			const form = document.getElementById("chat-form");
 			const input = document.getElementById("input");
 			const messages = document.getElementById("messages");
 			const usageBar = document.getElementById("usage-bar");
 			const costBar = document.getElementById("cost-bar");
+
+			const settingsBtn = document.getElementById("settings-btn");
+			const settingsModal = document.getElementById("settings-modal");
+			const systemInput = document.getElementById("system-input");
+
+			async function openSettings() {
+				try {
+					const res = await fetch("/api/settings");
+					const data = await res.json();
+					systemInput.value = data.systemInstruction ?? "";
+				} catch (err) {
+					console.error(err);
+				}
+				settingsModal.hidden = false;
+				systemInput.focus();
+			}
+
+			function closeSettings() {
+				settingsModal.hidden = true;
+			}
+
+			async function saveSettings() {
+				try {
+					const res = await fetch("/api/settings", {
+						method: "PUT",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({ systemInstruction: systemInput.value }),
+					});
+					if (!res.ok) throw new Error((await res.json()).error);
+					closeSettings();
+				} catch (err) {
+					alert("Gagal menyimpan pengaturan: " + err.message);
+				}
+			}
+
+			settingsBtn.addEventListener("click", openSettings);
+			document.getElementById("settings-cancel").addEventListener("click", closeSettings);
+			document.getElementById("settings-save").addEventListener("click", saveSettings);
+			settingsModal.addEventListener("click", (e) => {
+				if (e.target === settingsModal) closeSettings();
+			});
+			document.addEventListener("keydown", (e) => {
+				if (e.key === "Escape") closeSettings();
+			});
 
 			let contextLength = null;
 			let modelName = null;

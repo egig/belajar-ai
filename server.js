@@ -10,6 +10,7 @@ app.use(express.static("./public"))
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, baseURL: process.env.OPENAI_BASE_URL });
 
 let chatHistory = [];
+let systemInstruction = "";
 let lastUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
 let cumulativeUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
 
@@ -38,6 +39,21 @@ app.get("/api/chat", (req, res) => {
 	res.json({ history: chatHistory, totalUsage: lastUsage, cumulativeUsage });
 });
 
+app.get("/api/settings", (req, res) => {
+	res.json({ systemInstruction });
+});
+
+app.put("/api/settings", (req, res) => {
+	const { systemInstruction: value } = req.body ?? {};
+
+	if (typeof value !== "string") {
+		return res.status(400).json({ error: "systemInstruction harus berupa teks" });
+	}
+
+	systemInstruction = value.trim();
+	res.json({ systemInstruction });
+});
+
 app.get("/api/model-info", async (req, res) => {
 	res.json({ model: process.env.MODEL, limits: await getModelLimits() });
 });
@@ -56,7 +72,9 @@ app.post("/api/chat", async (req, res) => {
 	try {
 		const stream = await openai.chat.completions.create({
 			model: process.env.MODEL,
-			messages: chatHistory,
+			messages: systemInstruction
+				? [{ role: "system", content: systemInstruction }, ...chatHistory]
+				: chatHistory,
 			stream: true,
 			stream_options: { include_usage: true },
 		});
