@@ -5,10 +5,16 @@
 		<link rel="stylesheet" href="style.css" />
 	</head>
 	<body>
+		<aside id="sidebar">
+			<button type="button" id="new-thread">+ Obrolan baru</button>
+			<ul id="thread-list"></ul>
+			<footer id="sidebar-footer">
+				<button type="button" id="settings-btn" title="Pengaturan" aria-label="Pengaturan">Pengaturan</button>
+			</footer>
+		</aside>
 		<main>
 			<header>
 				<span>AI Chat Sederhana</span>
-				<button type="button" id="settings-btn" class="icon-btn" title="Pengaturan" aria-label="Pengaturan">Pengaturan</button>
 			</header>
 			<div id="messages"></div>
 			<form id="chat-form">
@@ -121,9 +127,64 @@
 				}
 			}
 
+			const threadList = document.getElementById("thread-list");
+			let currentThreadId = null;
+
+			async function loadThreads() {
+				const res = await fetch("/api/threads");
+				const { threads } = await res.json();
+				threadList.innerHTML = "";
+				for (const t of threads) {
+					const li = document.createElement("li");
+					if (t.id === currentThreadId) li.className = "active";
+					const title = document.createElement("span");
+					title.textContent = t.title || "Obrolan baru";
+					title.addEventListener("click", () => selectThread(t.id));
+					const del = document.createElement("button");
+					del.type = "button";
+					del.className = "icon-btn";
+					del.textContent = "×";
+					del.title = "Hapus obrolan";
+					del.addEventListener("click", async () => {
+						if (!confirm("Hapus obrolan ini?")) return;
+						await fetch("/api/threads/" + t.id, { method: "DELETE" });
+						if (t.id === currentThreadId) currentThreadId = null;
+						await initThreads();
+					});
+					li.append(title, del);
+					threadList.appendChild(li);
+				}
+				return threads;
+			}
+
+			async function selectThread(id) {
+				currentThreadId = id;
+				localStorage.setItem("threadId", id);
+				await loadThreads();
+				await loadHistory();
+			}
+
+			async function newThread() {
+				const res = await fetch("/api/threads", { method: "POST" });
+				const thread = await res.json();
+				await selectThread(thread.id);
+				input.focus();
+			}
+
+			async function initThreads() {
+				const threads = await loadThreads();
+				const saved = Number(localStorage.getItem("threadId"));
+				const target = threads.find((t) => t.id === (currentThreadId ?? saved)) ?? threads[0];
+				if (target) await selectThread(target.id);
+				else await newThread();
+			}
+
+			document.getElementById("new-thread").addEventListener("click", newThread);
+
 			async function loadHistory() {
+				messages.innerHTML = "";
 				try {
-					const res = await fetch("/api/chat");
+					const res = await fetch("/api/chat?threadId=" + currentThreadId);
 					const data = await res.json();
 					for (const msg of data.history ?? []) {
 						addMessage(msg.content, msg.role);
@@ -134,7 +195,7 @@
 					console.error(err);
 				}
 			}
-			loadModelInfo().then(loadHistory);
+			loadModelInfo().then(initThreads);
 
 			form.addEventListener("submit", async (e) => {
 				e.preventDefault();
@@ -152,7 +213,7 @@
 					const res = await fetch("/api/chat", {
 						method: "POST",
 						headers: { "Content-Type": "application/json" },
-						body: JSON.stringify({ message }),
+						body: JSON.stringify({ message, threadId: currentThreadId }),
 					});
 
 					if (!res.ok) {
@@ -172,6 +233,7 @@
 						const statsData = await statsRes.json();
 						renderUsage(statsData.totalUsage);
 						renderCost(statsData.cumulativeUsage);
+						loadThreads();
 					}
 				} catch (err) {
 					pending.textContent = "Gagal terhubung ke server";

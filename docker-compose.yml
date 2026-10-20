@@ -1,0 +1,29 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: belajar_ai
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d belajar_ai"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file: .env
+    environment:
+      # menimpa DATABASE_URL dari .env agar mengarah ke container db
+      DATABASE_URL: postgres://app:app@db:5432/belajar_ai
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

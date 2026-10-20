@@ -1,6 +1,18 @@
 import "dotenv/config"
 import express from "express"
 import OpenAI from "openai"
+import { initDb } from "./db.js"
+import {
+	listThreads,
+	createThread,
+	threadExists,
+	getSetting,
+	setSetting,
+	deleteThread,
+	saveMessage,
+	getMessages,
+	getUsage,
+} from "./store.js"
 
 const app = express();
 
@@ -8,11 +20,6 @@ app.use(express.json())
 app.use(express.static("./public"))
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, baseURL: process.env.OPENAI_BASE_URL });
-
-let chatHistory = [];
-let systemInstruction = "";
-let lastUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
-let cumulativeUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
 
 let modelLimits = null;
 async function getModelLimits() {
@@ -35,23 +42,44 @@ async function getModelLimits() {
 	return modelLimits;
 }
 
-app.get("/api/chat", (req, res) => {
-	res.json({ history: chatHistory, totalUsage: lastUsage, cumulativeUsage });
+const parseId = (v) => (/^\d+$/.test(String(v)) ? Number(v) : null);
+
+app.get("/api/threads", async (req, res) => {
+	res.json({ threads: await listThreads() });
 });
 
-app.get("/api/settings", (req, res) => {
-	res.json({ systemInstruction });
+app.post("/api/threads", async (req, res) => {
+	res.status(201).json(await createThread());
 });
 
-app.put("/api/settings", (req, res) => {
+app.delete("/api/threads/:id", async (req, res) => {
+	const id = parseId(req.params.id);
+	if (id === null) return res.status(400).json({ error: "id tidak valid" });
+	await deleteThread(id);
+	res.status(204).end();
+});
+
+app.get("/api/settings", async (req, res) => {
+	res.json({ systemInstruction: await getSetting("system_instruction") });
+});
+
+app.put("/api/settings", async (req, res) => {
 	const { systemInstruction: value } = req.body ?? {};
 
 	if (typeof value !== "string") {
 		return res.status(400).json({ error: "systemInstruction harus berupa teks" });
 	}
 
-	systemInstruction = value.trim();
-	res.json({ systemInstruction });
+	await setSetting("system_instruction", value.trim());
+	res.json({ systemInstruction: value.trim() });
+});
+
+app.get("/api/chat", async (req, res) => {
+	const threadId = parseId(req.query.threadId);
+	if (threadId === null) return res.status(400).json({ error: "threadId wajib diisi" });
+
+	const usage = await getUsage(threadId);
+	res.json({ history: await getMessages(threadId), totalUsage: usage.last, cumulativeUsage: usage.cumulative });
 });
 
 app.get("/api/model-info", async (req, res) => {
@@ -60,21 +88,29 @@ app.get("/api/model-info", async (req, res) => {
 
 app.post("/api/chat", async (req, res) => {
 	const { message } = req.body ?? {};
+	const threadId = parseId(req.body?.threadId);
 
 	if (!message || typeof message !== "string") {
 		return res.status(400).json({ error: "message wajib diisi" });
 	}
+	if (threadId === null || !(await threadExists(threadId))) {
+		return res.status(404).json({ error: "thread tidak ditemukan" });
+	}
 
-	chatHistory.push({ role: "user", content: message });
 	res.setHeader("Content-Type", "text/plain; charset=utf-8");
 
 	let reply = "";
+	let usage = null;
 	try {
+		const systemInstruction = await getSetting("system_instruction");
+		const history = await getMessages(threadId);
 		const stream = await openai.chat.completions.create({
 			model: process.env.MODEL,
-			messages: systemInstruction
-				? [{ role: "system", content: systemInstruction }, ...chatHistory]
-				: chatHistory,
+			messages: [
+				...(systemInstruction ? [{ role: "system", content: systemInstruction }] : []),
+				...history,
+				{ role: "user", content: message },
+			],
 			stream: true,
 			stream_options: { include_usage: true },
 		});
@@ -85,18 +121,13 @@ app.post("/api/chat", async (req, res) => {
 				reply += delta;
 				res.write(delta);
 			}
-			if (chunk.usage) {
-				lastUsage = chunk.usage;
-				cumulativeUsage.prompt_tokens += chunk.usage.prompt_tokens ?? 0;
-				cumulativeUsage.completion_tokens += chunk.usage.completion_tokens ?? 0;
-				cumulativeUsage.total_tokens += chunk.usage.total_tokens ?? 0;
-			}
+			if (chunk.usage) usage = chunk.usage;
 		}
 
-		chatHistory.push({ role: "assistant", content: reply });
+		await saveMessage(threadId, "user", message);
+		await saveMessage(threadId, "assistant", reply, usage);
 		res.end();
 	} catch (err) {
-		chatHistory.pop();
 		console.error(err);
 		if (!res.headersSent) {
 			res.status(500).json({ error: "gagal menghubungi OpenAI" });
@@ -105,6 +136,8 @@ app.post("/api/chat", async (req, res) => {
 		}
 	}
 });
+
+await initDb();
 
 const PORT = 3000;
 app.listen(PORT, () => {
