@@ -47,8 +47,24 @@ export async function saveMessage(threadId, role, content, usage = null) {
 }
 
 export async function getMessages(threadId) {
-	const { rows } = await pool.query("SELECT role, content FROM messages WHERE thread_id = $1 ORDER BY id", [threadId])
+	const { rows } = await pool.query(
+		"SELECT id::int AS id, role, content FROM messages WHERE thread_id = $1 ORDER BY id",
+		[threadId],
+	)
 	return rows
+}
+
+// ringkasan konteks thread: teks ringkasan + id pesan terakhir yang sudah diringkas
+export async function getThreadSummary(id) {
+	const { rows: [row] } = await pool.query(
+		"SELECT summary, summary_cursor::int AS cursor FROM threads WHERE id = $1",
+		[id],
+	)
+	return row ?? { summary: "", cursor: 0 }
+}
+
+export async function saveThreadSummary(id, summary, cursor) {
+	await pool.query("UPDATE threads SET summary = $2, summary_cursor = $3 WHERE id = $1", [id, summary, cursor])
 }
 
 // pemakaian token thread: last = panggilan terakhir, cumulative = jumlah semua panggilan

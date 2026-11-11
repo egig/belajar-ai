@@ -131,6 +131,34 @@ header {
 	gap: 12px;
 }
 
+#compact-btn {
+	padding: 6px 14px;
+	font-size: 13px;
+}
+
+.summary-divider {
+	align-self: stretch;
+	padding: 6px 0;
+	border-top: 1px dashed #d0d3d8;
+	font-size: 12px;
+	color: #9099a3;
+	text-align: center;
+}
+
+.summary-divider summary {
+	cursor: pointer;
+}
+
+.summary-divider p {
+	margin-top: 8px;
+	padding: 10px 14px;
+	border-radius: 12px;
+	background-color: #f7f8fa;
+	color: #4b5563;
+	text-align: left;
+	white-space: pre-wrap;
+}
+
 .message {
 	padding: 10px 14px;
 	border-radius: 16px;

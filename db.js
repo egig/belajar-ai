@@ -5,10 +5,14 @@ export const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL })
 export async function initDb() {
 	await pool.query(`
 		CREATE TABLE IF NOT EXISTS threads (
-			id         BIGSERIAL PRIMARY KEY,
-			title      TEXT,
-			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+			id             BIGSERIAL PRIMARY KEY,
+			title          TEXT,
+			summary        TEXT NOT NULL DEFAULT '',
+			summary_cursor BIGINT NOT NULL DEFAULT 0,
+			created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 		);
+		ALTER TABLE threads ADD COLUMN IF NOT EXISTS summary TEXT NOT NULL DEFAULT '';
+		ALTER TABLE threads ADD COLUMN IF NOT EXISTS summary_cursor BIGINT NOT NULL DEFAULT 0;
 		CREATE TABLE IF NOT EXISTS settings (
 			key   TEXT PRIMARY KEY,
 			value TEXT NOT NULL

@@ -3,7 +3,8 @@
 Chat sederhana dengan OpenAI-compatible API (mis. OpenRouter), streaming, dan **thread** (banyak percakapan) yang semuanya disimpan di Postgres:
 
 - **Thread**: tiap percakapan terpisah (sidebar di kiri), bisa dibuat dan dihapus.
-- **Pesan**: seluruh riwayat thread disimpan di tabel `messages` dan dikirim ke model setiap request.
+- **Pesan**: seluruh riwayat thread disimpan di tabel `messages`. Ke model hanya dikirim bagian yang muat (lihat manajemen konteks).
+- **Manajemen konteks hibrida**: saat riwayat mendekati batas konteks model, pesan lama dipotong (trim) dan diringkas (summarize). Ringkasan disimpan per thread di kolom `threads.summary` beserta `summary_cursor`, sehingga bagian yang sudah diringkas tidak diulang.
 - **System instruction**: pengaturan global di tabel `settings`, berlaku untuk semua thread (tombol Pengaturan).
 - **Pemakaian token**: disimpan per pesan assistant; total dan terakhir dihitung per thread.
 
@@ -42,6 +43,16 @@ npm start
 ```
 
 Tabel dibuat otomatis saat server start.
+
+## Manajemen konteks
+
+Riwayat panjang tidak dikirim utuh ke model. Logikanya ada di `context.js`:
+
+1. **Trim**: pesan terbaru dikirim apa adanya selama muat dalam anggaran prompt (setengah dari batas konteks model setelah dikurangi ruang untuk jawaban).
+2. **Summarize**: begitu riwayat melewati ~70% anggaran, pesan yang dipotong diringkas oleh model dan digabung ke ringkasan lama (disimpan di `threads.summary`). Cursor `threads.summary_cursor` menandai pesan terakhir yang sudah diringkas agar tidak diulang.
+3. Ringkasan dikirim sebagai bagian dari system message bersama system instruction.
+
+Batas konteks diambil dari OpenRouter (`/api/model-info`); kalau tidak tersedia, dipakai default 32.000 token.
 
 ## API
 

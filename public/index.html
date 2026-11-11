@@ -15,6 +15,7 @@
 		<main>
 			<header>
 				<span>AI Chat Sederhana</span>
+				<button type="button" id="compact-btn" class="secondary" title="Ringkas obrolan agar konteks lebih hemat">Ringkas</button>
 			</header>
 			<div id="messages"></div>
 			<form id="chat-form">
@@ -181,6 +182,19 @@
 
 			document.getElementById("new-thread").addEventListener("click", newThread);
 
+			// penanda: pesan di atas garis ini sudah masuk ringkasan
+			function addSummaryDivider(summary) {
+				const el = document.createElement("details");
+				el.className = "summary-divider";
+				const label = document.createElement("summary");
+				label.textContent = "Obrolan di atas sudah diringkas";
+				const body = document.createElement("p");
+				body.textContent = summary;
+				el.append(label, body);
+				messages.appendChild(el);
+				messages.scrollTop = messages.scrollHeight;
+			}
+
 			async function loadHistory() {
 				messages.innerHTML = "";
 				try {
@@ -188,6 +202,7 @@
 					const data = await res.json();
 					for (const msg of data.history ?? []) {
 						addMessage(msg.content, msg.role);
+						if (data.summary && msg.id === data.summaryCursor) addSummaryDivider(data.summary);
 					}
 					renderUsage(data.totalUsage);
 					renderCost(data.cumulativeUsage);
@@ -195,6 +210,23 @@
 					console.error(err);
 				}
 			}
+
+			const compactBtn = document.getElementById("compact-btn");
+			compactBtn.addEventListener("click", async () => {
+				compactBtn.disabled = true;
+				compactBtn.textContent = "Meringkas...";
+				try {
+					const res = await fetch(`/api/threads/${currentThreadId}/compact`, { method: "POST" });
+					const data = await res.json();
+					if (!res.ok) throw new Error(data.error);
+					await loadHistory();
+				} catch (err) {
+					alert("Gagal meringkas: " + err.message);
+				} finally {
+					compactBtn.disabled = false;
+					compactBtn.textContent = "Ringkas";
+				}
+			});
 			loadModelInfo().then(initThreads);
 
 			form.addEventListener("submit", async (e) => {
@@ -229,7 +261,7 @@
 							messages.scrollTop = messages.scrollHeight;
 						}
 
-						const statsRes = await fetch("/api/chat");
+						const statsRes = await fetch("/api/chat?threadId=" + currentThreadId);
 						const statsData = await statsRes.json();
 						renderUsage(statsData.totalUsage);
 						renderCost(statsData.cumulativeUsage);
